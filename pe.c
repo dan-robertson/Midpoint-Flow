@@ -199,10 +199,6 @@ int main()
 
 	render_poly(points, NUMPOINTS, ren);
 
-	/* int i; */
-	/* for(i = 0; i<NUMPOINTS; i++){ */
-	/*      printf("Point %i: (%i, %i)\n", i, (int)(points[i].x*WIDTH), (int)(points[i].y*HEIGHT)); */
-	/* } */
 	ptime = SDL_GetTicks();
 	quit = 0;
 	while(!quit){
