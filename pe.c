@@ -113,42 +113,52 @@ double iter(point **points, point **newpoints, int npoints)
 	return r;
 }
 
-void render_lines(point *points, int numpoints, SDL_Renderer *ren)
+void to_SDL_points(point *points, SDL_Point *spoints, int numpoints)
 {
-	point *p1, *p2;
 	int i;
-	int w,h;
-	p2 = points + numpoints - 1;
-	p1 = points;
-	for(i = 0; i < numpoints; i++){
-		SDL_RenderDrawLine(ren,
-				   (int)(p2->x*WIDTH),
-				   (int)(p2->y*HEIGHT),
-				   (int)(p1->x*WIDTH),
-				   (int)(p1->y*HEIGHT));
-		p2 = p1++;
-	}
-}
-
-void render_points(point *points, int numpoints, SDL_Renderer *ren)
-{
+	SDL_Point *sp;
 	point *p;
-	p = points + numpoints;
-	while(p-- > points){
-		SDL_RenderDrawPoint(ren,
-				    (int)(p->x*WIDTH),
-				    (int)(p->y*HEIGHT));
+	sp=spoints;
+	p=points;
+	for(i = 0; i < numpoints; i++){
+	  sp->x = (int)(p->x*WIDTH);
+	  sp->y = (int)(p->y*HEIGHT);
+	  sp++;
+	  p++;
 	}
 }
 
+#define SPBUF 5
 void render_poly(point *points, int numpoints, SDL_Renderer *ren)
 {
+	static int np = 0;
+	static SDL_Point **spointsb = NULL;
+	static int i = 0;
+	SDL_Point *spoints;
+	if(np != numpoints){
+		np = numpoints;
+		if(spointsb != NULL)
+			for(i = 0; i < SPBUF; i++){
+				free(spointsb[i]);
+			}
+		else
+			spointsb = malloc(SPBUF*sizeof(*spointsb));
+		for(i = 0; i < SPBUF; i++){
+			spointsb[i] = malloc(np*sizeof(**spointsb));
+		}
+		i = 0;
+	}
+	spoints = spointsb[i];
+	i = (i+1) % SPBUF;
+
 	SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
 	SDL_RenderClear(ren);
 	SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
-	render_lines(points, numpoints, ren);
+
+	to_SDL_points(points, spoints, numpoints);
+	SDL_RenderDrawLines(ren, spoints, numpoints);
 	SDL_SetRenderDrawColor(ren, 255, 0, 0, 255);
-	render_points(points, numpoints, ren);
+	SDL_RenderDrawPoints(ren, spoints, numpoints);
 	SDL_RenderPresent(ren);
 }
 
@@ -199,7 +209,7 @@ int main()
 		if(!event_ready){
 			iter(&points, &nextpoints, NUMPOINTS);
 			iter(&points, &nextpoints, NUMPOINTS); /* iterate twice for smoothness */
-			if((ctime = SDL_GetTicks()) - ptime > 30){
+			if((ctime = SDL_GetTicks()) - ptime > 16){
 				render_poly(points, NUMPOINTS, ren);
 				ptime = ctime;
 			}
