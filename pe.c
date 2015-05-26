@@ -128,7 +128,7 @@ void to_SDL_points(point *points, SDL_Point *spoints, int numpoints)
 	}
 }
 
-#define SPBUF 5
+#define SPBUF 20
 void render_poly(point *points, int numpoints, SDL_Renderer *ren)
 {
 	static int np = 0;
@@ -156,7 +156,8 @@ void render_poly(point *points, int numpoints, SDL_Renderer *ren)
 	SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
 
 	to_SDL_points(points, spoints, numpoints);
-	SDL_RenderDrawLines(ren, spoints, numpoints);
+	if(SDL_RenderDrawLines(ren, spoints, numpoints)<0)
+		printf("draw failed %s\n", SDL_GetError());
 	SDL_SetRenderDrawColor(ren, 255, 0, 0, 255);
 	SDL_RenderDrawPoints(ren, spoints, numpoints);
 	SDL_RenderPresent(ren);
