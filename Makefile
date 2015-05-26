@@ -1,3 +1,3 @@
-CFLAGS=-lc -lm -lSDL2 -O3
+CFLAGS=-lc -lm -lSDL2 -g
 
 all: pe
