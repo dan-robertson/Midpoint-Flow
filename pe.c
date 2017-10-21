@@ -7,7 +7,7 @@
 
 #define WIDTH 1000
 #define HEIGHT WIDTH
-#define NUMPOINTS 50
+#define NUMPOINTS 1000
 
 typedef struct point {
 	double x,y;
@@ -43,9 +43,9 @@ SDL_Window *initialise_window(int width, int height)
 
 /* Initialise points with random values between 0 and 1 */
 #define RANDOM_SEGMENTS 5
-void random_points(point *points, int npoints)
+void random_points(point *points, long npoints)
 {
-	int i,j;
+	long i,j;
 	point *p, *p2, *q;
 
 	p=points;
@@ -57,45 +57,58 @@ void random_points(point *points, int npoints)
 	p=q=points;
 	p2=points+RANDOM_SEGMENTS;
 	for(i=0;i<npoints;i++){
-	  if((j=i%RANDOM_SEGMENTS)==0){
-		  p = p2;
-		  if(p2 >= points+npoints)
-		  	p2=points;
-		  else
-		  	p2+=RANDOM_SEGMENTS;
-	  } else {
-	  	double m;
-		m=((double)j)/RANDOM_SEGMENTS;
-		q->x = m*(p->x) + (1-m)*(p2->x);
-		q->y = m*(p->y) + (1-m)*(p2->y);
-	  }
-	  q++;
+		if((j=i%RANDOM_SEGMENTS)==0){
+			p = p2;
+			if(p2 >= points+npoints)
+				p2=points;
+			else
+				p2+=RANDOM_SEGMENTS;
+		} else {
+	  		double m;
+			m=((double)j)/RANDOM_SEGMENTS;
+			q->x = m*(p->x) + (1-m)*(p2->x);
+			q->y = m*(p->y) + (1-m)*(p2->y);
+		}
+		q++;
 	}
 }
 
+/* replace each line segment with its midpoint
+ */
 #define WEIGHT 0.5
-double midpointiter(point *old, point *new, int npoints)
+double* midpointiter(point *old, point *new, long npoints)
 {
 	point *p1, *p2, *np;
-	int i;
-	double l1;
-	double l2;
+	long i;
+	double *r, minx, miny, maxx, maxy;
+
+	r = malloc(4*sizeof(*r));
+
+	minx = miny = 20;
+	maxx = maxy = -20;
 	
-	p2 = old + npoints - 1;
+	p2 = &old[npoints - 1];
 	p1 = old;
 	np = new;
-	l1 = l2 = 0;
 	for(i=0;i<npoints;i++){
-		point *onp;
 		np->x = p1->x*WEIGHT + p2->x*(1-WEIGHT);
 		np->y = p1->y*WEIGHT + p2->y*(1-WEIGHT);
-		l1 += (p1->x - p2->x)*(p1->x - p2->x) + (p1->y - p2->y)*(p1->y - p2->y);
+
+		if(np->x<minx) minx = np->x;
+		else if(np->x>maxx) maxx = np->x;
+		if(np->y<miny) miny = np->y;
+		else if(np->y>maxy) maxy = np->y;
+
 		p2 = p1++;
-		onp = np++;
-		if(i + 1 == npoints) np = new;
-		l2 += (np->x - onp->x)*(np->x - onp->x) + (np->y - onp->y)*(np->y - onp->y);
+		np++;
 	}
-	return l2 / l1;
+	
+	r[0] = minx;
+	r[1] = miny;
+	r[2] = maxx;
+	r[3] = maxy;
+
+	return r;
 }
 
 vec2 diff(vec2 *l, vec2 *m, vec2 *r){
@@ -105,7 +118,12 @@ vec2 diff(vec2 *l, vec2 *m, vec2 *r){
 	return ret;
 }
 
-vec2 curveature(point *p_2, point *p_1, point *p, point *p1, point *p2){
+/* The curvature at point p
+ * p_2, p_1 are the two points before p and p1, p2 the two after.
+ * returns a vector towards the radius with magnitude proportional to
+ * the curvature.
+ */
+vec2 curvature(point *p_2, point *p_1, point *p, point *p1, point *p2){
 	vec2 u_1, u, u1, up;
 	double um, uup;
 	vec2 r;
@@ -116,13 +134,13 @@ vec2 curveature(point *p_2, point *p_1, point *p, point *p1, point *p2){
 	
 	up = diff(&u_1, &u, &u1);
 	*/
-
+	
 	u.x = -0.3125*p_2->x - 0.85*p_1->x - 0.475*p->x +0.35*p1->x + 0.1875*p2->x;
 	u.y = -0.3125*p_2->y - 0.85*p_1->y - 0.475*p->y +0.35*p1->y + 0.1875*p2->y;
 
 	up.x = 2.5*p_2->x + 3*p_1->x - 4*p->x -3*p1->x +0.5*p2->x;
 	up.y = 2.5*p_2->y + 3*p_1->y - 4*p->y -3*p1->y +0.5*p2->y;
-
+	
 	um = u.x*u.x + u.y*u.y;
 	um = 1/um;
 	uup = u.x*up.x + u.y*up.y;
@@ -131,17 +149,17 @@ vec2 curveature(point *p_2, point *p_1, point *p, point *p1, point *p2){
 		r.x = um*(up.x - um*u.x*uup);
 		r.y = um*(up.y - um*u.y*uup);
 	} else {
-	  r.x = r.y = 0;
+		r.x = r.y = 0;
 	}
 	return r;
 }
 
-#define CURVEWEIGHT 1e-6
-void curvatureiter(point *old, point *new, int npoints){
+#define CURVEWEIGHT (1e-4)
+void curvatureiter(point *old, point *new, long npoints){
 	point *p_2, *p_1, *p, *p1, *p2;
 	vec2 K;
 	point *np;
-	int i;
+	long i;
 	
 	p1 = old + npoints - 1;
 	p = p1 - 1;
@@ -151,7 +169,7 @@ void curvatureiter(point *old, point *new, int npoints){
 	np = new;
 
 	for(i=0;i<npoints;i++){
-		K = curveature(p_2,p_1,p,p1,p2);
+		K = curvature(p_2,p_1,p,p1,p2);
 		np->x = p->x + K.x*CURVEWEIGHT;
 		np->y = p->y + K.y*CURVEWEIGHT;
 		np++;
@@ -162,9 +180,9 @@ void curvatureiter(point *old, point *new, int npoints){
 	}
 }
 
-void scale(point *points, int npoints, double margin)
+void scale(point *points, long npoints, double margin)
 {
-	int i;
+	long i;
 	point *p;
 	double minx, maxx, miny, maxy;
 
@@ -179,6 +197,7 @@ void scale(point *points, int npoints, double margin)
 		else if(p->y>maxy) maxy = p->y;
 		p++;
 	}
+
 	p = points;
 	for(i=0; i<npoints; i++){
 	     p->x = ((p->x - minx) / (maxx - minx)) * (1 - 2*margin) + margin;
@@ -187,23 +206,37 @@ void scale(point *points, int npoints, double margin)
 	}
 }
 
-double iter(point **points, point **newpoints, int npoints)
+void scale2(point *points, long npoints, double margin, double minx, double miny, double maxx, double maxy)
+{
+	long i;
+	point *p;
+
+	p=points;
+	for(i=0; i<npoints; i++){
+	     p->x = ((p->x - minx) / (maxx - minx)) * (1 - 2*margin) + margin;
+	     p->y = ((p->y - miny) / (maxy - miny)) * (1 - 2*margin) + margin;
+	     p++;
+	}
+}
+
+double iter(point **points, point **newpoints, long npoints)
 {
 	point *temp;
-	double r;
-	/*r = midpointiter(*points, *newpoints, npoints);*/
-	r=0;
-	curvatureiter(*points, *newpoints, npoints);
-	scale(*newpoints, npoints, 0.1);
+	double *r;
+	/* curvatureiter(*points, *newpoints, npoints); */
+	r = midpointiter(*points, *newpoints, npoints);
+	/* scale(*newpoints, npoints, 0.1); */
+	scale2(*newpoints, npoints, 0.1, r[0], r[1], r[2], r[3]);
+	free(r);
 	temp = *points;
 	*points = *newpoints;
 	*newpoints = temp;
-	return r;
+	return 0;
 }
 
-void to_SDL_points(point *points, SDL_Point *spoints, int numpoints)
+void to_SDL_points(point *points, SDL_Point *spoints, long numpoints)
 {
-	int i;
+	long i;
 	SDL_Point *sp;
 	point *p;
 	sp=spoints;
@@ -219,12 +252,13 @@ void to_SDL_points(point *points, SDL_Point *spoints, int numpoints)
 	sp->y = (int)(p->y*HEIGHT);
 }
 
-#define SPBUF 20
-void render_poly(point *points, int numpoints, SDL_Renderer *ren)
+#define SPBUF 1
+void render_poly(point *points, long numpoints, SDL_Renderer *ren)
 {
-	static int np = 0;
+	static long np = 0;
 	static SDL_Point **spointsb = NULL;
-	static int i = 0;
+	static long i = 0;
+	static SDL_Rect everything = {0,0,WIDTH,HEIGHT};
 	SDL_Point *spoints;
 	if(np != numpoints){
 		np = numpoints;
@@ -242,15 +276,15 @@ void render_poly(point *points, int numpoints, SDL_Renderer *ren)
 	spoints = spointsb[i];
 	i = (i+1) % SPBUF;
 
-	SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
-	SDL_RenderClear(ren);
-	SDL_SetRenderDrawColor(ren, 0, 0, 0, 255);
+	SDL_SetRenderDrawColor(ren, 255, 255, 255, 32);
+	SDL_RenderFillRect(ren, &everything);
+	SDL_SetRenderDrawColor(ren, 0, 0, 0, 128);
 
 	to_SDL_points(points, spoints, numpoints);
-	if(SDL_RenderDrawLines(ren, spoints, numpoints+1)<0)
+	if(SDL_RenderDrawLines(ren, spoints+1, numpoints-1)<0)
 		printf("draw failed %s\n", SDL_GetError());
-	SDL_SetRenderDrawColor(ren, 255, 0, 0, 255);
-	SDL_RenderDrawPoints(ren, spoints, numpoints+1);
+	/*SDL_SetRenderDrawColor(ren, 255, 0, 0, 200);
+	  SDL_RenderDrawPoints(ren, spoints, numpoints+1);*/
 	SDL_RenderPresent(ren);
 }
 
@@ -266,6 +300,8 @@ int main()
 
 	int quit, event_ready;
 
+	SDL_Rect everything;
+	
 	srand(time(NULL));
 
 	/* Initialise SDL stuff */
@@ -275,19 +311,24 @@ int main()
 	}
 	window = initialise_window(WIDTH, HEIGHT);
 	if(window == NULL){
-		goto exit;
+		goto exit2;
 	}
 	ren = SDL_CreateRenderer(window, -1, 0);
 	if(ren == NULL){
 		printf("SDL_CreateRenderer Error: %s", SDL_GetError());
-		goto exit2;
+		goto exit3;
 	}
 
+	SDL_SetRenderDrawBlendMode(ren, SDL_BLENDMODE_BLEND);
+	
 	/* Initialise data */
 	points = malloc(NUMPOINTS*sizeof(*points));
 	nextpoints = malloc(NUMPOINTS*sizeof(*points));
 	random_points(points, NUMPOINTS);
 
+	SDL_SetRenderDrawColor(ren, 255, 255, 255, 255);
+	SDL_RenderFillRect(ren, &everything);
+	SDL_RenderPresent(ren);
 	render_poly(points, NUMPOINTS, ren);
 
 	ptime = SDL_GetTicks();
